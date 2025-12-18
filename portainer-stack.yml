@@ -1,0 +1,147 @@
+# =======================================================
+# PORTAINER STACK - FINGERPRINT MEDIA CONVERTER v1.0
+# =======================================================
+# Cole este arquivo no Portainer > Stacks > Add Stack
+# =======================================================
+
+version: '3.8'
+
+services:
+  fingerprint-converter:
+    image: jondevsouza31/fingerprint-converter:latest
+    container_name: fingerprint-converter
+    ports:
+      - "5001:5001"
+    environment:
+      # Server Configuration
+      - PORT=5001
+      - APP_ENV=production
+      - READ_TIMEOUT=5m
+      - WRITE_TIMEOUT=5m
+      - BODY_LIMIT=524288000
+      
+      # Performance Tuning
+      - GOMEMLIMIT=2GiB
+      - GOGC=100
+      - MAX_WORKERS=64
+      - BUFFER_POOL_SIZE=100
+      - BUFFER_SIZE=10485760
+      - REQUEST_TIMEOUT=5m
+      - DOWNLOAD_TIMEOUT=30s
+      - MAX_DOWNLOAD_SIZE=524288000
+      
+      # Cache Configuration (28/30 minutos)
+      - CACHE_DIR=/tmp/media-cache
+      - CACHE_TTL=28m
+      - FILE_TTL=30m
+      - ENABLE_CACHE=true
+      
+      # Anti-Fingerprint Settings
+      - DEFAULT_AF_LEVEL=moderate
+      
+      # Logging
+      - LOG_LEVEL=info
+      - ENABLE_PERFORMANCE_LOGS=true
+      - DEBUG=false
+      
+      # Production Settings
+      - PRODUCTION_MODE=true
+      - ENABLE_CORS=true
+      
+      # Monitoring
+      - ENABLE_HEALTH_CHECK=true
+      - ENABLE_STATS_ENDPOINT=true
+    
+    # tmpfs para armazenamento rápido em RAM (melhor performance)
+    tmpfs:
+      - /tmp/media-cache:size=4G,mode=1777
+    
+    restart: always
+    
+    # Use a mesma rede da sua API Node.js
+    networks:
+      - whatsapp-network
+    
+    # Limits de recursos (ajuste conforme sua VPS)
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '2'
+          memory: 2G
+    
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5001/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  whatsapp-network:
+    driver: bridge
+
+# =======================================================
+# ENDPOINTS DA API
+# =======================================================
+# POST http://SEU_IP:5001/api/convert
+# GET  http://SEU_IP:5001/api/health
+# GET  http://SEU_IP:5001/api/cache/stats
+# GET  http://SEU_IP:5001/api/cache/stats/:deviceID
+#
+# DOCUMENTAÇÃO COMPLETA:
+# https://github.com/jonemp31/fingerprint-converter
+# =======================================================
+
+# =======================================================
+# INTEGRAÇÃO COM SUA API NODE.JS
+# =======================================================
+# No seu código Node.js, use:
+# const CONVERTER_API = 'http://fingerprint-converter:5001';
+# 
+# Exemplo:
+# const response = await axios.post(`${CONVERTER_API}/api/convert`, {
+#   device_id: 'device001',
+#   url: 'https://s3.example.com/audio.mp3',
+#   media_type: 'audio',
+#   anti_fingerprint_level: 'moderate'
+# });
+# =======================================================
+
+# =======================================================
+# AJUSTES DE PERFORMANCE
+# =======================================================
+# VPS com 2 CPU, 2GB RAM:
+#   MAX_WORKERS: 32
+#   BUFFER_POOL_SIZE: 50
+#   tmpfs: size=2G
+#   limits: cpus: '2', memory: 2G
+#
+# VPS com 4 CPU, 4GB RAM (padrão):
+#   MAX_WORKERS: 64
+#   BUFFER_POOL_SIZE: 100
+#   tmpfs: size=4G
+#   limits: cpus: '4', memory: 4G
+#
+# VPS com 8+ CPU, 8GB+ RAM:
+#   MAX_WORKERS: 128
+#   BUFFER_POOL_SIZE: 150
+#   tmpfs: size=8G
+#   limits: cpus: '8', memory: 8G
+# =======================================================
+
+# =======================================================
+# NÍVEIS DE ANTI-FINGERPRINTING RECOMENDADOS
+# =======================================================
+# Audio: moderate (melhor custo/benefício)
+# Imagem: moderate (noise adaptativo para PNG)
+# Vídeo: basic (evita aumento excessivo de tamanho)
+#
+# Use 'paranoid' apenas para volumes muito altos
+# =======================================================
+
+# =======================================================
+# PRONTO PARA COPIAR E COLAR NO PORTAINER!
+# =======================================================
