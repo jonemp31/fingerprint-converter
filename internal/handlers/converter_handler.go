@@ -95,25 +95,23 @@ func (h *ConverterHandler) Convert(c fiber.Ctx) error {
 		})
 	}
 
+	// Auto-detect media type if not provided
 	if req.MediaType == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(models.ErrorResponse{
-			Success: false,
-			Error:   "media_type is required (audio/image/video)",
-		})
+		req.MediaType = detectMediaType(req.URL)
+		if req.MediaType == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(models.ErrorResponse{
+				Success: false,
+				Error:   "Could not detect media type from URL. Please provide media_type (audio/image/video)",
+				Details: "Supported extensions: audio (.mp3,.opus,.ogg,.m4a,.wav,.aac), image (.jpg,.jpeg,.png,.webp,.gif), video (.mp4,.avi,.mov,.mkv,.webm,.flv)",
+			})
+		}
+		log.Printf("🔍 Auto-detected media type: %s from URL: %s", req.MediaType, truncateURL(req.URL))
 	}
 
-	// Set default anti-fingerprint level
+	// Set default anti-fingerprint level if not provided
 	if req.AntiFingerprintLevel == "" {
-		switch req.MediaType {
-		case "audio":
-			req.AntiFingerprintLevel = "moderate"
-		case "image":
-			req.AntiFingerprintLevel = "moderate"
-		case "video":
-			req.AntiFingerprintLevel = "basic"
-		default:
-			req.AntiFingerprintLevel = "moderate"
-		}
+		req.AntiFingerprintLevel = getDefaultAFLevel(req.MediaType)
+		log.Printf("🎯 Using default AF level: %s for media type: %s", req.AntiFingerprintLevel, req.MediaType)
 	}
 
 	// Check cache first
@@ -180,29 +178,33 @@ func (h *ConverterHandler) Convert(c fiber.Ctx) error {
 
 	originalSize := int64(len(inputData))
 
-	// Generate output path
+	// Create media-specific subdirectory
+	mediaSubdir := getMediaSubdir(req.MediaType)
+	mediaCacheDir := filepath.Join(h.cacheDir, mediaSubdir)
+
+	// Ensure media subdirectory exists
+	if err := os.MkdirAll(mediaCacheDir, 0755); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(models.ErrorResponse{
+			Success: false,
+			Error:   "Failed to create media cache directory",
+			Details: err.Error(),
+		})
+	}
+
+	// Generate output path in media-specific subdirectory
 	var outputPath string
 	switch req.MediaType {
 	case "audio":
-		outputPath = h.audioConverter.GenerateOutputPath(h.cacheDir, req.DeviceID, urlHash)
+		outputPath = h.audioConverter.GenerateOutputPath(mediaCacheDir, req.DeviceID, urlHash)
 	case "image":
-		outputPath = h.imageConverter.GenerateOutputPath(h.cacheDir, req.DeviceID, urlHash)
+		outputPath = h.imageConverter.GenerateOutputPath(mediaCacheDir, req.DeviceID, urlHash)
 	case "video":
-		outputPath = h.videoConverter.GenerateOutputPath(h.cacheDir, req.DeviceID, urlHash)
+		outputPath = h.videoConverter.GenerateOutputPath(mediaCacheDir, req.DeviceID, urlHash)
 	default:
 		return c.Status(fiber.StatusBadRequest).JSON(models.ErrorResponse{
 			Success: false,
 			Error:   fmt.Sprintf("Unsupported media_type: %s", req.MediaType),
 			Details: "Supported types: audio, image, video",
-		})
-	}
-
-	// Ensure cache directory exists
-	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(models.ErrorResponse{
-			Success: false,
-			Error:   "Failed to create cache directory",
-			Details: err.Error(),
 		})
 	}
 
@@ -348,6 +350,70 @@ func truncateURL(url string) string {
 		return url[:57] + "..."
 	}
 	return url
+}
+
+// detectMediaType detects media type from URL extension
+func detectMediaType(url string) string {
+	urlLower := strings.ToLower(url)
+
+	// Audio extensions
+	if strings.HasSuffix(urlLower, ".mp3") ||
+		strings.HasSuffix(urlLower, ".opus") ||
+		strings.HasSuffix(urlLower, ".ogg") ||
+		strings.HasSuffix(urlLower, ".m4a") ||
+		strings.HasSuffix(urlLower, ".wav") ||
+		strings.HasSuffix(urlLower, ".aac") {
+		return "audio"
+	}
+
+	// Image extensions
+	if strings.HasSuffix(urlLower, ".jpg") ||
+		strings.HasSuffix(urlLower, ".jpeg") ||
+		strings.HasSuffix(urlLower, ".png") ||
+		strings.HasSuffix(urlLower, ".webp") ||
+		strings.HasSuffix(urlLower, ".gif") {
+		return "image"
+	}
+
+	// Video extensions
+	if strings.HasSuffix(urlLower, ".mp4") ||
+		strings.HasSuffix(urlLower, ".avi") ||
+		strings.HasSuffix(urlLower, ".mov") ||
+		strings.HasSuffix(urlLower, ".mkv") ||
+		strings.HasSuffix(urlLower, ".webm") ||
+		strings.HasSuffix(urlLower, ".flv") {
+		return "video"
+	}
+
+	return ""
+}
+
+// getDefaultAFLevel returns the recommended AF level for media type
+func getDefaultAFLevel(mediaType string) string {
+	switch mediaType {
+	case "audio":
+		return "moderate"
+	case "image":
+		return "moderate"
+	case "video":
+		return "basic"
+	default:
+		return "moderate"
+	}
+}
+
+// getMediaSubdir returns the subdirectory for the media type
+func getMediaSubdir(mediaType string) string {
+	switch mediaType {
+	case "audio":
+		return "audios"
+	case "image":
+		return "imagens"
+	case "video":
+		return "videos"
+	default:
+		return "outros"
+	}
 }
 
 // sendFile streams file to client with appropriate content type

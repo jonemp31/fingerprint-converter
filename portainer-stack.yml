@@ -31,7 +31,7 @@ services:
       - MAX_DOWNLOAD_SIZE=524288000
       
       # Cache Configuration (28/30 minutos)
-      - CACHE_DIR=/tmp/media-cache
+      - CACHE_DIR=/data/fingerprintconverter
       - CACHE_TTL=28m
       - FILE_TTL=30m
       - ENABLE_CACHE=true
@@ -52,9 +52,9 @@ services:
       - ENABLE_HEALTH_CHECK=true
       - ENABLE_STATS_ENDPOINT=true
     
-    # tmpfs para armazenamento rápido em RAM (melhor performance)
-    tmpfs:
-      - /tmp/media-cache:size=4G,mode=1777
+    # Volume persistente organizado por tipo de mídia
+    volumes:
+      - fingerprint-data:/data/fingerprintconverter
     
     restart: always
     
@@ -83,6 +83,10 @@ networks:
   whatsapp-network:
     driver: bridge
 
+volumes:
+  fingerprint-data:
+    driver: local
+
 # =======================================================
 # ENDPOINTS DA API
 # =======================================================
@@ -96,18 +100,23 @@ networks:
 # =======================================================
 
 # =======================================================
-# INTEGRAÇÃO COM SUA API NODE.JS
+# INTEGRAÇÃO SIMPLIFICADA
 # =======================================================
-# No seu código Node.js, use:
-# const CONVERTER_API = 'http://fingerprint-converter:5001';
-# 
-# Exemplo:
-# const response = await axios.post(`${CONVERTER_API}/api/convert`, {
-#   device_id: 'device001',
-#   url: 'https://s3.example.com/audio.mp3',
-#   media_type: 'audio',
-#   anti_fingerprint_level: 'moderate'
-# });
+# A API agora detecta automaticamente:
+# - Tipo de mídia pela extensão (.mp3=audio, .jpg=image, .mp4=video)
+# - Nível AF ideal (audio=moderate, image=moderate, video=basic)
+# - Organiza em pastas: /data/fingerprintconverter/{audios,imagens,videos}
+#
+# Exemplo mínimo (só device_id e url):
+# curl -X POST http://localhost:5001/api/convert \
+#   -H "Content-Type: application/json" \
+#   -d '{"device_id":"cel01","url":"https://example.com/audio.mp3"}'
+#
+# Com download direto:
+# curl -X POST "http://localhost:5001/api/convert?download=true" \
+#   -H "Content-Type: application/json" \
+#   -d '{"device_id":"cel01","url":"https://example.com/audio.mp3"}' \
+#   -o output.opus
 # =======================================================
 
 # =======================================================
